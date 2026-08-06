@@ -179,6 +179,9 @@ def main():
         applied += 1
 
     if applied == 0:
+        if (dest / "FalloutNV.esm").exists():
+            ok("fixed ESMs already present - nothing to do")
+            return 0
         return fail("no patches applied")
     ok(f"Done: {applied} fixed ESMs written to {dest}")
     info("Enable the 'Fixed ESMs' mod in MO2 (press F5 to refresh).")
