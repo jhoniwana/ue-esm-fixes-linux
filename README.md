@@ -1,19 +1,19 @@
 # Ultimate Edition ESM Fixes Remastered — Linux Port
 
-Port nativo a Linux del instalador de [Ultimate Edition ESM Fixes Remastered](https://www.nexusmods.com/newvegas/mods/92289) (Kazopert/RoyBatty). Sin Wine, sin Proton: extrae los parches del `.mpi` y los aplica con `xdelta3` compilado para Linux.
+Native Linux port of the installer of [Ultimate Edition ESM Fixes Remastered](https://www.nexusmods.com/newvegas/mods/92289) (Kazopert/RoyBatty). No Wine, no Proton: extracts the patches from the `.mpi` and applies them with `xdelta3` built for Linux.
 
-## Qué hace
+## What it does
 
-Reproduce exactamente el flujo del `Installer.exe` original (verificado contra su manifiesto interno `_package/index.json`):
+Reproduces exactly the flow of the original `Installer.exe` (verified against its internal manifest `_package/index.json`):
 
-1. Lee el contenedor `Ultimate Edition ESM Fixes Remastered.mpi` (BSA-like custom).
-2. Los 6 parches `.xd3` están **comprimidos con LZ4 Frame** dentro del contenedor (magic `04 22 4D 18`); se descomprimen con `python-lz4`.
-3. Cada stream VCDIFF (xdelta3, compresor secundario lzma) declara en su primer window el `cpylen` = tamaño del esm vanilla fuente → se matchea contra el `Data/*.esm` del juego.
-4. `xdelta3 -d -s <vanilla> <patch> <corregido>` → esm corregidos en la carpeta destino.
+1. Reads the `Ultimate Edition ESM Fixes Remastered.mpi` container (custom BSA-like).
+2. The 6 `.xd3` patches are **compressed with LZ4 Frames** inside the container (magic `04 22 4D 18`); decompressed with `python-lz4`.
+3. Each VCDIFF stream (xdelta3, lzma secondary compressor) declares in its first window the `cpylen` = size of the vanilla source ESM → matched against the game's `Data/*.esm`.
+4. `xdelta3 -d -s <vanilla> <patch> <fixed>` → fixed ESMs written to the destination folder.
 
-Outputs verificados (v1.03, juego Steam validado):
+Verified outputs (v1.03, Steam-validated game):
 
-| esm | vanilla | corregido |
+| ESM | vanilla | fixed |
 |---|---|---|
 | FalloutNV.esm | 245,650,747 | 330,921,877 |
 | DeadMoney.esm | 6,274,851 | 7,303,362 |
@@ -22,39 +22,41 @@ Outputs verificados (v1.03, juego Steam validado):
 | LonesomeRoad.esm | 25,676,818 | 40,265,999 |
 | GunRunnersArsenal.esm | 252,445 | 252,293 |
 
-Nota: los parches NO validan los esm (solo el `FalloutNV.exe`, y nuestro exe matchea el hash soportado `0021023E...`). Los esm deben ser los vanilla de Steam/GOG/EGS en inglés, sin modificar.
+Note: the patches do NOT validate the ESMs (only `FalloutNV.exe`, and our exe matches the supported hash `0021023E...`). The ESMs must be the unmodified English vanilla ones from Steam/GOG/EGS.
 
-## Requisitos
+## Requirements
 
-- `xdelta3` nativo → `./build_xdelta3.sh` (compila 3.1.0 a `~/.local/bin`, sin sudo)
+- Native `xdelta3` → `./build_xdelta3.sh` (builds 3.1.0 to `~/.local/bin`, no sudo)
 - `python-lz4` → `pip install lz4`
-- El juego con los esm vanilla (Steam: `steamapps/common/Fallout New Vegas/Data`)
+- The game with vanilla ESMs (Steam: `steamapps/common/Fallout New Vegas/Data`)
 
-## Uso
+## Usage
 
 ```bash
 python3 port.py --dest "$HOME/.local/share/modorganizer2/mods/Fixed ESMs"
 ```
 
-Opciones:
+Options:
 
-- `--game-dir DIR` — si el juego no está en las rutas Steam por defecto
-- `--mpi FILE` — si el `.mpi` no está junto al script
-- `--force` — re-aplicar aunque los esm de salida ya existan
+- `--game-dir DIR` — if the game is not in the default Steam paths
+- `--mpi FILE` — if the `.mpi` is not next to the script
+- `--force` — re-apply even if the output ESMs already exist
 
-Luego en MO2: F5 para refrescar y activar el mod **Fixed ESMs**.
+Then in MO2: press F5 to refresh and enable the **Fixed ESMs** mod.
 
-## Archivos del repo
+## Repository files
 
-| Archivo | Descripción |
+| File | Description |
 |---|---|
-| `port.py` | El port (extracción LZ4 + aplicación xdelta3) |
-| `build_xdelta3.sh` | Compila xdelta3 nativo desde fuente |
-| `Installer.exe` | Original (referencia/diagnóstico, no se ejecuta) |
-| `Ultimate Edition ESM Fixes Remastered.mpi` | Payload del mod (parches) |
+| `port.py` | The port (LZ4 extraction + xdelta3 apply) |
+| `build_xdelta3.sh` | Builds native xdelta3 from source |
+| `Installer.exe` | Original (reference/diagnostics, never executed) |
+| `Ultimate Edition ESM Fixes Remastered.mpi` | Mod payload (patches) |
+| `xdelta3.dll` | Required by the original Installer.exe (reference) |
 
-## Cómo se descubrió
+## How it was figured out
 
-- El `.mpi` NO es un BSA v105 estándar: records ilegibles + magics VCDIFF "falsos" dentro de los datos → eran **bloques LZ4** (los errores `ERROR_blockMode_invalid` del .exe son códigos de `lz4frame`, no de zstd).
-- El manifiesto real (`_package/index.json`, comprimido con LZ4): `Assets` mapea 1:1 `%FNVDATA%\<esm>` contra `./<esm>`; `Checks` solo valida `FalloutNV.exe` (8 SHA1: Steam/GOG/EGS parcheados o no); los esm van crudos a `xd3_decode_memory`.
-- Sin cadena de parches, sin esm pre-generados: cada parche es plano contra el vanilla.
+- The `.mpi` is NOT a standard BSA v105: unreadable records + "fake" VCDIFF magics inside the data → they were **LZ4 blocks** (the `ERROR_blockMode_invalid` errors from the .exe are `lz4frame` codes, not zstd).
+- The real manifest (`_package/index.json`, LZ4-compressed): `Assets` maps 1:1 `%FNVDATA%\<esm>` against `./<esm>`; `Checks` only validates `FalloutNV.exe` (8 SHA1s: Steam/GOG/EGS patched or not); the ESMs go raw into `xd3_decode_memory`.
+- No patch chain, no pre-generated ESMs: every patch is flat against the vanilla file.
+- Validation: the output of this port is **SHA1-identical** to the output of the official `Installer.exe` run under Proton (all 6 ESMs).

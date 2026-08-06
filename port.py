@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-"""UE ESM Fixes Remastered — Linux port (reemplaza Installer.exe).
+"""Ultimate Edition ESM Fixes Remastered — Linux port (replaces Installer.exe).
 
-Lee el contenedor `Ultimate Edition ESM Fixes Remastered.mpi`, extrae los
-6 parches xdelta3 (envueltos en LZ4 Frame), los aplica con xdelta3 nativo
-a los esm vanilla del Data/ del juego y escribe los esm corregidos en la
-carpeta destino (mod "Fixed ESMs" de MO2).
+Reads the `Ultimate Edition ESM Fixes Remastered.mpi` container, extracts the
+6 xdelta3 patches (wrapped in LZ4 Frames), applies them with native xdelta3 to
+the vanilla ESMs in the game's Data/ folder and writes the fixed ESMs to the
+destination folder (MO2 "Fixed ESMs" mod).
 
-El port reproduce exactamente el flujo del Installer.exe original:
-  source  = %FNVDATA%\\<esm> (sin validar, sin preprocesar)
+Reproduces exactly the flow of the original Installer.exe:
+  source  = %FNVDATA%\\<esm> (unvalidated, unprocessed)
   output  = %DESTINATION%\\<esm>
 
-Requisitos:
-  - xdelta3 nativo (ver build_xdelta3.sh si falta)
+Requirements:
+  - native xdelta3 (see build_xdelta3.sh if missing)
   - python-lz4 (pip install lz4)
 """
 from __future__ import annotations
@@ -40,15 +40,15 @@ STEAM_LIBRARIES = [
 
 
 def info(msg):
-    print(f"  ℹ {msg}", flush=True)
+    print(f"  i {msg}", flush=True)
 
 
 def ok(msg):
-    print(f"  ✔ {msg}", flush=True)
+    print(f"  + {msg}", flush=True)
 
 
 def fail(msg, code=1):
-    print(f"  ✘ {msg}", flush=True)
+    print(f"  ! {msg}", flush=True)
     return code
 
 
@@ -62,8 +62,8 @@ def varint(data, i):
             return v, i
 
 
-def primer_cpylen(stream: bytes):
-    """cpylen del primer window = tamaño del esm source (vanilla)."""
+def first_cpylen(stream: bytes):
+    """cpylen of the first window == size of the vanilla source ESM."""
     i = 4
     hdr = stream[i]; i += 1
     if hdr & 0x01:          # VCD_SECONDARY
@@ -78,7 +78,7 @@ def primer_cpylen(stream: bytes):
     return cl
 
 
-def encontrar_frames(data: bytes):
+def find_frames(data: bytes):
     magics = []
     pos = 0
     while True:
@@ -90,7 +90,7 @@ def encontrar_frames(data: bytes):
     return magics
 
 
-def buscar_juego():
+def find_game():
     for lib in STEAM_LIBRARIES:
         cand = lib / "common" / GAME_DIR_NAME
         if (cand / "FalloutNV.exe").exists():
@@ -98,7 +98,7 @@ def buscar_juego():
     return None
 
 
-def buscar_xdelta3():
+def find_xdelta3():
     for cand in (shutil.which("xdelta3"),
                  Path.home() / ".local/bin/xdelta3"):
         if cand and Path(cand).exists():
@@ -111,57 +111,57 @@ def main():
     ap.add_argument("--mpi", default=str(MPI))
     ap.add_argument("--game-dir")
     ap.add_argument("--dest", required=True,
-                    help="carpeta del mod (esm corregidos), p.ej. mods/Fixed ESMs")
+                    help="mod folder (fixed ESMs), e.g. mods/Fixed ESMs")
     ap.add_argument("--force", action="store_true",
-                    help="re-aplicar aunque el esm de salida ya exista")
+                    help="re-apply even if the output ESM already exists")
     args = ap.parse_args()
 
     mpi_path = Path(args.mpi)
     if not mpi_path.exists():
-        return fail(f"no encuentro el .mpi: {mpi_path}")
-    game_dir = Path(args.game_dir) if args.game_dir else buscar_juego()
+        return fail(f"mpi not found: {mpi_path}")
+    game_dir = Path(args.game_dir) if args.game_dir else find_game()
     if game_dir is None:
-        return fail("no encontré el juego — usá --game-dir")
-    xd3 = buscar_xdelta3()
+        return fail("game not found - use --game-dir")
+    xd3 = find_xdelta3()
     if xd3 is None:
-        return fail("falta xdelta3 nativo — corré build_xdelta3.sh (o instalalo)")
+        return fail("native xdelta3 missing - run build_xdelta3.sh (or install it)")
     try:
         import lz4.frame
     except ImportError:
-        return fail("falta python-lz4 — pip install lz4")
+        return fail("python-lz4 missing - pip install lz4")
 
     dest = Path(args.dest)
     dest.mkdir(parents=True, exist_ok=True)
 
-    print(f"Juego: {game_dir}")
-    print(f"Dest:  {dest}")
+    print(f"Game: {game_dir}")
+    print(f"Dest: {dest}")
 
     data = mpi_path.read_bytes()
     esms = {p.stat().st_size: p for p in (game_dir / "Data").glob("*.esm")}
-    frames = encontrar_frames(data)
-    aplicados = 0
+    frames = find_frames(data)
+    applied = 0
     for idx, off in enumerate(frames):
-        fin = frames[idx + 1] if idx + 1 < len(frames) else len(data)
+        end = frames[idx + 1] if idx + 1 < len(frames) else len(data)
         try:
-            stream = lz4.frame.decompress(data[off:fin])
+            stream = lz4.frame.decompress(data[off:end])
         except Exception:
             continue
         if not stream.startswith(VCDIFF_MAGIC):
             continue
-        cl = primer_cpylen(stream)
+        cl = first_cpylen(stream)
         if cl is None:
             continue
         esm = None
-        for tam in sorted(esms):
-            if tam >= cl:
-                esm = esms[tam]
+        for size in sorted(esms):
+            if size >= cl:
+                esm = esms[size]
                 break
         if esm is None or (esm.stat().st_size - cl) > 100_000:
-            info(f"parche @{off}: cpylen={cl} no matchea ningún esm vanilla — omito")
+            info(f"patch @{off}: cpylen={cl} does not match any vanilla ESM - skipping")
             continue
         out = dest / esm.name
         if out.exists() and not args.force:
-            ok(f"{esm.name}: ya existe ({out.name}) — omito (--force para re-aplicar)")
+            ok(f"{esm.name}: already exists ({out.name}) - skipping (--force to re-apply)")
             continue
         tmp = dest / f".patch_{idx}.xd3"
         tmp.write_bytes(stream)
@@ -169,19 +169,19 @@ def main():
                            capture_output=True, text=True)
         tmp.unlink(missing_ok=True)
         if r.returncode != 0 or not out.exists():
-            fail(f"{esm.name}: xdelta3 falló ({r.stderr.strip()[:120]})")
+            fail(f"{esm.name}: xdelta3 failed ({r.stderr.strip()[:120]})")
             continue
         head = out.read_bytes()[:4]
         if head != b"TES4":
-            fail(f"{esm.name}: salida inválida (no es TES4) — source incorrecto")
+            fail(f"{esm.name}: invalid output (not TES4) - wrong source")
             continue
         ok(f"{esm.name} -> {out.name} ({out.stat().st_size:,} bytes)")
-        aplicados += 1
+        applied += 1
 
-    if aplicados == 0:
-        return fail("no se aplicó ningún parche")
-    ok(f"Listo: {aplicados} esm corregidos en {dest}")
-    info("Activá el mod 'Fixed ESMs' en MO2 (F5 para refrescar).")
+    if applied == 0:
+        return fail("no patches applied")
+    ok(f"Done: {applied} fixed ESMs written to {dest}")
+    info("Enable the 'Fixed ESMs' mod in MO2 (press F5 to refresh).")
     return 0
 
 
