@@ -24,6 +24,38 @@ Verified outputs (v1.03, Steam-validated game):
 
 Note: the patches do NOT validate the ESMs (only `FalloutNV.exe`, and our exe matches the supported hash `0021023E...`). The ESMs must be the unmodified English vanilla ones from Steam/GOG/EGS.
 
+## ⚠️ CRITICAL: the ESMs must match the CURRENT Steam depot (learned the hard way)
+
+xdelta3 patches are **position-dependent**: a source that differs from the patch's
+vanilla by even a few bytes (e.g. ESMs copied from another machine/install) produces
+an output that LOOKS valid (TES4 header ok, correct size) but is **silently corrupt** —
+records missing (FalloutNV: 233k records instead of 465k, ALL dialogue records gone)
+→ the game crashes at startup in the dialogue/quest init (`ACCESS_VIOLATION` at
+`0x00AA991C`, "Last modified by YUP" contexts).
+
+**Symptoms of a bad build**: count the records of the output:
+
+```bash
+# FalloutNV fixed must have ~465k records incl. ~18k DIALOG; a corrupt build has
+# ~233k records and 0 DIALOG records.
+python3 - <<'EOF'
+import struct
+d = open('Fixed ESMs/FalloutNV.esm','rb').read()
+off = n = dial = 0
+while off + 24 <= len(d):
+    t = d[off:off+4]; s = struct.unpack_from('<I', d, off+4)[0]
+    if t == b'TES4': off += 24+s; continue
+    if t == b'GRUP': off += 24; continue
+    if s > 100_000_000: break
+    n += 1; dial += (t == b'DIAL'); off += 24+s
+print(n, 'records,', dial, 'DIALOG')
+EOF
+```
+
+**Fix**: run `steam steam://validate/22380` (Steam rewrites the ESMs to the exact
+depot content) and re-run `port.py --force`. Note: the validate also reverts the
+4GB patch and the decompressed BSAs → re-run those steps afterwards.
+
 ## Requirements
 
 - Native `xdelta3` → `./build_xdelta3.sh` (builds 3.1.0 to `~/.local/bin`, no sudo)
