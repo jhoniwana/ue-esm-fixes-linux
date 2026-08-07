@@ -30,6 +30,7 @@ SRCORTGT = VCD_SOURCE | VCD_TARGET
 
 HERE = Path(__file__).resolve().parent
 MPI = HERE / "Ultimate Edition ESM Fixes Remastered.mpi"
+CACHE = Path.home() / ".cache" / "vnv-uefix"
 APPID = "22380"
 GAME_DIR_NAME = "Fallout New Vegas"
 STEAM_LIBRARIES = [
@@ -106,9 +107,51 @@ def find_xdelta3():
     return None
 
 
+def find_mpi(explicit: Path | None):
+    """Locate the source .mpi (or the Nexus archive containing it).
+
+    Order: explicit --mpi, legacy repo-local .mpi, then the downloaded
+    Nexus archive under downloads/ (this repo's parent parent). The Nexus
+    file is a .7z that contains the .mpi (see ensure_mpi).
+    """
+    if explicit is not None:
+        return explicit if explicit.exists() else None
+    if MPI.exists():
+        return MPI
+    dl = HERE.parent.parent / "downloads"
+    for pat in ("*Ultimate Edition ESM Fixes*.7z",
+                "*Ultimate Edition ESM Fixes*.rar",
+                "*Ultimate Edition ESM Fixes*.zip"):
+        hits = sorted(dl.glob(pat))
+        if hits:
+            return hits[0]
+    return None
+
+
+def ensure_mpi(src: Path):
+    """If src is an archive, extract its .mpi member (cached) and return it."""
+    if src.suffix.lower() not in (".7z", ".rar", ".zip"):
+        return src
+    seven = shutil.which("7z") or shutil.which("7zz") or shutil.which("7za")
+    if seven is None:
+        fail("7z not found - needed to unpack the .mpi from the Nexus archive")
+        return None
+    CACHE.mkdir(parents=True, exist_ok=True)
+    target = CACHE / "Ultimate Edition ESM Fixes Remastered.mpi"
+    if not target.exists():
+        info(f"extracting {src.name} -> {target}")
+        r = subprocess.run([seven, "e", "-y", f"-o{CACHE}", str(src), "*.mpi"],
+                           capture_output=True, text=True)
+        if r.returncode != 0 or not target.exists():
+            msg = (r.stderr or r.stdout).strip()[:200]
+            fail(f"7z extract failed: {msg}")
+            return None
+    return target
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--mpi", default=str(MPI))
+    ap.add_argument("--mpi", default="")
     ap.add_argument("--game-dir")
     ap.add_argument("--dest", required=True,
                     help="mod folder (fixed ESMs), e.g. mods/Fixed ESMs")
@@ -116,9 +159,13 @@ def main():
                     help="re-apply even if the output ESM already exists")
     args = ap.parse_args()
 
-    mpi_path = Path(args.mpi)
-    if not mpi_path.exists():
-        return fail(f"mpi not found: {mpi_path}")
+    src = find_mpi(Path(args.mpi) if args.mpi else None)
+    if src is None:
+        return fail("mpi not found: pass --mpi, keep it next to port.py, or "
+                    "have the Nexus archive in downloads/")
+    mpi_path = ensure_mpi(src)
+    if mpi_path is None:
+        return 1
     game_dir = Path(args.game_dir) if args.game_dir else find_game()
     if game_dir is None:
         return fail("game not found - use --game-dir")

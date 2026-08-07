@@ -28,7 +28,14 @@ Note: the patches do NOT validate the ESMs (only `FalloutNV.exe`, and our exe ma
 
 - Native `xdelta3` → `./build_xdelta3.sh` (builds 3.1.0 to `~/.local/bin`, no sudo)
 - `python-lz4` → `pip install lz4`
+- `7z` (`p7zip`/`7-zip`) — only if the source is the Nexus `.7z` (it is unpacked automatically)
 - The game with vanilla ESMs (Steam: `steamapps/common/Fallout New Vegas/Data`)
+- The mod payload: the `.mpi` (or the Nexus `.7z` that contains it) — see below
+
+The `.mpi` (220 MB) is **not** tracked in this repo: download `Ultimate Edition ESM
+Fixes Remastered` from Nexus (mod 92289) and either keep the downloaded `.7z` under
+`downloads/` next to the vnv workspace or pass it with `--mpi`. It is unpacked to
+`~/.cache/vnv-uefix/` automatically (7z must be installed).
 
 ## Usage
 
@@ -39,7 +46,7 @@ python3 port.py --dest "$HOME/.local/share/modorganizer2/mods/Fixed ESMs"
 Options:
 
 - `--game-dir DIR` — if the game is not in the default Steam paths
-- `--mpi FILE` — if the `.mpi` is not next to the script
+- `--mpi FILE` — the `.mpi` (or the Nexus `.7z`/`.rar`/`.zip` containing it); auto-detected in `downloads/`
 - `--force` — re-apply even if the output ESMs already exist
 
 Then in MO2: press F5 to refresh and enable the **Fixed ESMs** mod.
@@ -51,7 +58,6 @@ Then in MO2: press F5 to refresh and enable the **Fixed ESMs** mod.
 | `port.py` | The port (LZ4 extraction + xdelta3 apply) |
 | `build_xdelta3.sh` | Builds native xdelta3 from source |
 | `Installer.exe` | Original (reference/diagnostics, never executed) |
-| `Ultimate Edition ESM Fixes Remastered.mpi` | Mod payload (patches) |
 | `xdelta3.dll` | Required by the original Installer.exe (reference) |
 
 ## How it was figured out
