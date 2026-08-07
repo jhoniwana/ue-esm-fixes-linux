@@ -7,8 +7,16 @@ the vanilla ESMs in the game's Data/ folder and writes the fixed ESMs to the
 destination folder (MO2 "Fixed ESMs" mod).
 
 Reproduces exactly the flow of the original Installer.exe:
-  source  = %FNVDATA%\\<esm> (unvalidated, unprocessed)
-  output  = %DESTINATION%\\<esm>
+  source  = %FNVDATA%/<esm> (unvalidated, unprocessed)
+  output  = %DESTINATION%/<esm>
+
+Improvements over the first port:
+  - Patch-to-ESM matching by NAME (the .mpi index stores the .xd3 names in
+    order: oldworldblues/gunrunnersarsenal/honesthearts/falloutnv/lonesomeroad/
+    deadmoney). No more fragile size-guessing.
+  - Refuses to write into the game's own Data/ folder (would overwrite the
+    vanilla ESMs); the fixed ESMs must go to an MO2 mod folder.
+  - Falls back to the size heuristic only if names cannot be read.
 
 Requirements:
   - native xdelta3 (see build_xdelta3.sh if missing)
@@ -18,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import shutil
 import struct
 import subprocess
@@ -94,6 +103,24 @@ def find_frames(data: bytes):
     return magics
 
 
+def read_patch_names(data: bytes) -> list[str]:
+    """Nombres .esm.xd3 del índice del .mpi (NUL-terminated, en orden)."""
+    # los nombres aparecen como "oldworldblues.esm.xd3\0..." en el índice
+    names = re.findall(rb"([a-z0-9_]+\.esm\.xd3)\x00", data)
+    # orden de aparición = orden de los parches en el contenedor
+    vistos = []
+    for n in names:
+        s = n.decode()
+        if s not in vistos:
+            vistos.append(s)
+    return vistos
+
+
+def esm_for_patch(nombre_xd3: str) -> str:
+    """'deadmoney.esm.xd3' -> 'deadmoney.esm' (el dict de Data/ está en lower)."""
+    return nombre_xd3[:-len(".xd3")]
+
+
 def find_game():
     for lib in STEAM_LIBRARIES:
         cand = lib / "common" / GAME_DIR_NAME
@@ -111,12 +138,6 @@ def find_xdelta3():
 
 
 def find_mpi(explicit: Path | None):
-    """Locate the source .mpi (or the Nexus archive containing it).
-
-    Order: explicit --mpi, legacy repo-local .mpi, then the downloaded
-    Nexus archive under downloads/ (this repo's parent parent). The Nexus
-    file is a .7z that contains the .mpi (see ensure_mpi).
-    """
     if explicit is not None:
         return explicit if explicit.exists() else None
     if MPI.exists():
@@ -132,7 +153,6 @@ def find_mpi(explicit: Path | None):
 
 
 def ensure_mpi(src: Path):
-    """If src is an archive, extract its .mpi member (cached) and return it."""
     if src.suffix.lower() not in (".7z", ".rar", ".zip"):
         return src
     seven = shutil.which("7z") or shutil.which("7zz") or shutil.which("7za")
@@ -180,16 +200,27 @@ def main():
     except ImportError:
         return fail("python-lz4 missing - pip install lz4")
 
-    dest = Path(args.dest)
+    dest = Path(args.dest).resolve()
+    data_dir = (game_dir / "Data").resolve()
+    if dest == data_dir:
+        return fail("REFUSING: --dest points to the game's Data/ folder. "
+                    "The fixed ESMs must go to an MO2 mod folder (e.g. "
+                    "mods/Fixed ESMs) so the vanilla ESMs are never overwritten.")
     dest.mkdir(parents=True, exist_ok=True)
 
     print(f"Game: {game_dir}")
     print(f"Dest: {dest}")
 
     data = mpi_path.read_bytes()
-    esms = {p.stat().st_size: p for p in (game_dir / "Data").glob("*.esm")}
+    # ESM vanilla disponibles (por nombre y por tamaño)
+    esms = {p.name.lower(): p for p in (game_dir / "Data").glob("*.esm")}
+    nombres = read_patch_names(data)
+    if nombres:
+        info(f"parches identificados por nombre: {', '.join(nombres)}")
+
     frames = find_frames(data)
     applied = 0
+    idx_vcdiff = 0
     for idx, off in enumerate(frames):
         end = frames[idx + 1] if idx + 1 < len(frames) else len(data)
         try:
@@ -201,14 +232,28 @@ def main():
         cl = first_cpylen(stream)
         if cl is None:
             continue
+        # elegir el ESM: por NOMBRE (si tenemos el índice) o por tamaño
         esm = None
-        for size in sorted(esms):
-            if size >= cl:
-                esm = esms[size]
-                break
-        if esm is None or (esm.stat().st_size - cl) > 100_000:
-            info(f"patch @{off}: cpylen={cl} does not match any vanilla ESM - skipping")
-            continue
+        nombre_patch = None
+        if idx_vcdiff < len(nombres):
+            nombre_patch = nombres[idx_vcdiff]
+            esm = esms.get(esm_for_patch(nombre_patch))
+        if esm is None:
+            # fallback: tamaño más cercano >= cpylen
+            for size in sorted((p.stat().st_size for p in esms.values())):
+                if size >= cl:
+                    for p in esms.values():
+                        if p.stat().st_size == size:
+                            esm = p
+                            break
+                    break
+            if esm is None or (esm.stat().st_size - cl) > 100_000:
+                info(f"patch @{off}: no matching vanilla ESM - skipping")
+                continue
+        idx_vcdiff += 1
+        if nombre_patch:
+            info(f"patch @{off}: {nombre_patch} -> {esm.name}")
+
         out = dest / esm.name
         if out.exists() and not args.force:
             ok(f"{esm.name}: already exists ({out.name}) - skipping (--force to re-apply)")
