@@ -293,8 +293,10 @@ def main():
             continue
         tmp = dest / f".patch_{idx}.xd3"
         tmp.write_bytes(stream)
-        r = subprocess.run([xd3, "-d", "-s", str(esm), str(tmp), str(out)],
-                           capture_output=True, text=True)
+        cmd = [xd3, "-d", "-s", str(esm), str(tmp), str(out)]
+        if args.force:
+            cmd.append("-f")  # sobrescribir el ESM existente (re-aplicar)
+        r = subprocess.run(cmd, capture_output=True, text=True)
         tmp.unlink(missing_ok=True)
         if r.returncode != 0 or not out.exists():
             fail(f"{esm.name}: xdelta3 failed ({r.stderr.strip()[:120]})")
