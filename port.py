@@ -309,7 +309,11 @@ def main():
         r = subprocess.run(cmd, capture_output=True, text=True)
         tmp.unlink(missing_ok=True)
         if r.returncode != 0 or not out.exists():
-            fail(f"{esm.name}: xdelta3 failed ({r.stderr.strip()[:120]})")
+            err_txt = r.stderr.strip()[:140]
+            fail(f"{esm.name}: xdelta3 failed ({err_txt})")
+            if "checksum mismatch" in err_txt or "source file too short" in err_txt \
+                    or "source file incorrect" in err_txt or "XD3_INVALID_INPUT" in err_txt:
+                fail(f"  → EL PATCH NO MATCHEA LOS ESMs DEL JUEGO (mpi vs depot)")
             continue
         head = out.read_bytes()[:4]
         if head != b"TES4":
@@ -327,7 +331,19 @@ def main():
         if (dest / "FalloutNV.esm").exists():
             ok("fixed ESMs already present - nothing to do")
             return 0
-        return fail("no patches applied")
+        fail("no patches applied")
+        fail("")
+        fail("DETALLES IMPORTANTES:")
+        fail("  Los patches del .mpi (Ultimate Edition ESM Fixes Remastered v1.03) NO")
+        fail("  matchean los ESMs del depot actual de Steam (diferencias de ±bytes,")
+        fail("  cpylen FalloutNV=245,642,722 vs vanilla=245,650,747).")
+        fail("  Con el source incorrecto, xdelta3 produce ESMs con TES4 valido pero")
+        fail("  records faltantes → crash 0x00AA991C al iniciar (dialogos).")
+        fail("")
+        fail("  SOLUCION: hereda los Fixed ESMs de una instalacion existente:")
+        fail("    cp -r ~/.local/share/modorganizer2/mods/Fixed ESMs  <dest>/")
+        fail("  o usa --force con esms del depot que el .mpi espera (no recomendado).")
+        return 1
     ok(f"Done: {applied} fixed ESMs written to {dest}")
     info("Enable the 'Fixed ESMs' mod in MO2 (press F5 to refresh).")
     return 0
