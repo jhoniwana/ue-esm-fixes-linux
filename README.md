@@ -69,6 +69,28 @@ Fixes Remastered` from Nexus (mod 92289) and either keep the downloaded `.7z` un
 `downloads/` next to the vnv workspace or pass it with `--mpi`. It is unpacked to
 `~/.cache/vnv-uefix/` automatically (7z must be installed).
 
+
+## ⚠️ IMPORTANT (2026-08-08): the .mpi patches may NOT match your Steam depot
+
+The `Ultimate Edition ESM Fixes Remastered.mpi` (v1.03) was built against a
+slightly different vanilla (cpylen FalloutNV=245,642,722 vs your
+`FalloutNV.esm`=245,650,747; DeadMoney 6,274,831 vs 6,274,851 — ±bytes).
+When the source differs, xdelta3 fails with `checksum mismatch` /
+`source file too short` / `XD3_INVALID_INPUT` and a **silent "no patches
+applied"** — which used to leave fresh installs WITHOUT Fixed ESMs → crash
+`0x00AA991C` at dialogue init (deterministic).
+
+**Behavior now**:
+- The port fails loudly with diagnostics + inherit instructions.
+- The VNV pipeline (`root_mods.py`) **automatically inherits** the validated
+  Fixed ESMs from a previous install (`~/.local/share/modorganizer2/mods/Fixed ESMs`)
+  when the .mpi can't be re-applied, then verifies 6/6 TES4.
+- Manual inherit: `cp -r ~/.local/share/modorganizer2/mods/"Fixed ESMs" <dest>/`
+
+**Rule (BRAIN.md)**: Steam verify must precede uefix. If re-applying still
+fails, inherit — do NOT force a mismatched source (produces ESMs with valid
+TES4 but missing records → crash).
+
 ## Usage
 
 ```bash
