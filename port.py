@@ -104,10 +104,10 @@ def find_frames(data: bytes):
 
 
 def read_patch_names(data: bytes) -> list[str]:
-    """Nombres .esm.xd3 del índice del .mpi (NUL-terminated, en orden)."""
-    # los nombres aparecen como "oldworldblues.esm.xd3\0..." en el índice
+    """Patch .esm.xd3 names from the .mpi index (NUL-terminated, in order)."""
+    # the names appear as "oldworldblues.esm.xd3\0..." in the index
     names = re.findall(rb"([a-z0-9_]+\.esm\.xd3)\x00", data)
-    # orden de aparición = orden de los parches en el contenedor
+    # appearance order = patch order in the container
     vistos = []
     for n in names:
         s = n.decode()
@@ -117,7 +117,7 @@ def read_patch_names(data: bytes) -> list[str]:
 
 
 def esm_for_patch(nombre_xd3: str) -> str:
-    """'deadmoney.esm.xd3' -> 'deadmoney.esm' (el dict de Data/ está en lower)."""
+    """'deadmoney.esm.xd3' -> 'deadmoney.esm' (the Data/ dict is lowercase)."""
     return nombre_xd3[:-len(".xd3")]
 
 
@@ -174,7 +174,7 @@ def ensure_mpi(src: Path):
 
 def validar_esm(path, minimo_records=None, minimo_dialog=None):
     """Valida estructuralmente un ESM: recorre records/GRUPs y detecta tipos
-    no imprimibles, tamaños absurdos y formids con módulo inválido (>0x0F).
+    non-printable types, absurd sizes and formids with an invalid module (>0x0F).
     Devuelve (records, dialogs, error)."""
     d = open(path, 'rb').read()
     off = 0
@@ -194,7 +194,7 @@ def validar_esm(path, minimo_records=None, minimo_dialog=None):
             return n, dial, f"size absurdo {rsize} en {rtype} @ {off}"
         formid = struct.unpack_from('<I', d, off+12)[0]
         if (formid >> 24) > 0x0F:
-            return n, dial, f"formid {formid:08X} con módulo inválido en {rtype} @ {off}"
+            return n, dial, f"formid {formid:08X} invalid module in {rtype} @ {off}"
         n += 1
         dial += (rtype == b'DIAL')
         off += 24 + rsize
@@ -255,7 +255,7 @@ def main():
     print(f"Dest: {dest}")
 
     data = mpi_path.read_bytes()
-    # ESM vanilla disponibles (por nombre y por tamaño)
+    # vanilla ESMs available (by name and by size)
     esms = {p.name.lower(): p for p in (game_dir / "Data").glob("*.esm")}
     nombres = read_patch_names(data)
     if nombres:
@@ -275,14 +275,14 @@ def main():
         cl = first_cpylen(stream)
         if cl is None:
             continue
-        # elegir el ESM: por NOMBRE (si tenemos el índice) o por tamaño
+        # choose the ESM: by NAME (if we have the index) or by size
         esm = None
         nombre_patch = None
         if idx_vcdiff < len(nombres):
             nombre_patch = nombres[idx_vcdiff]
             esm = esms.get(esm_for_patch(nombre_patch))
         if esm is None:
-            # fallback: tamaño más cercano >= cpylen
+            # fallback: closest size >= cpylen
             for size in sorted((p.stat().st_size for p in esms.values())):
                 if size >= cl:
                     for p in esms.values():
@@ -319,10 +319,10 @@ def main():
         if head != b"TES4":
             fail(f"{esm.name}: invalid output (not TES4) - wrong source")
             continue
-        # verificación estructural post-parcheo (records/dialogos/formids)
+        # post-patch structural verification (records/dialogues/formids)
         n_rec, n_dial, err = validar_esm(out)
         if err:
-            fail(f"{esm.name}: validación falló ({err})")
+            fail(f"{esm.name}: validation failed ({err})")
             continue
         ok(f"{esm.name} -> {out.name} ({out.stat().st_size:,} bytes, {n_rec:,} records, {n_dial} DIALOG)")
         applied += 1
