@@ -231,7 +231,17 @@ def main():
     try:
         import lz4.frame
     except ImportError:
-        return fail("python-lz4 missing - pip install lz4")
+        # auto-install: el venv del pipeline no trae lz4 (setup.sh no lo instala)
+        info("python-lz4 missing - installing it automatically...")
+        r = subprocess.run([sys.executable, "-m", "pip", "install", "-q", "lz4"],
+                           capture_output=True, text=True)
+        if r.returncode != 0:
+            return fail(f"could not install python-lz4 ({r.stderr.strip()[:120]})")
+        try:
+            import lz4.frame
+        except ImportError:
+            return fail("python-lz4 still missing after install")
+        ok("python-lz4 installed")
 
     dest = Path(args.dest).resolve()
     data_dir = (game_dir / "Data").resolve()
