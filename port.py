@@ -172,6 +172,39 @@ def ensure_mpi(src: Path):
     return target
 
 
+def validar_esm(path, minimo_records=None, minimo_dialog=None):
+    """Valida estructuralmente un ESM: recorre records/GRUPs y detecta tipos
+    no imprimibles, tamaños absurdos y formids con módulo inválido (>0x0F).
+    Devuelve (records, dialogs, error)."""
+    d = open(path, 'rb').read()
+    off = 0
+    n = dial = 0
+    while off + 24 <= len(d):
+        rtype = d[off:off+4]
+        rsize = struct.unpack_from('<I', d, off+4)[0]
+        if rtype == b'TES4':
+            off += 24 + rsize
+            continue
+        if rtype == b'GRUP':
+            off += 24
+            continue
+        if not all(32 <= b < 127 for b in rtype):
+            return n, dial, f"tipo no imprimible {rtype!r} @ {off}"
+        if rsize > 60_000_000:
+            return n, dial, f"size absurdo {rsize} en {rtype} @ {off}"
+        formid = struct.unpack_from('<I', d, off+12)[0]
+        if (formid >> 24) > 0x0F:
+            return n, dial, f"formid {formid:08X} con módulo inválido en {rtype} @ {off}"
+        n += 1
+        dial += (rtype == b'DIAL')
+        off += 24 + rsize
+    if minimo_records and n < minimo_records:
+        return n, dial, f"solo {n} records (esperaba >= {minimo_records})"
+    if minimo_dialog and dial < minimo_dialog:
+        return n, dial, f"solo {dial} DIALOG (esperaba >= {minimo_dialog})"
+    return n, dial, None
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--mpi", default="")
@@ -270,7 +303,12 @@ def main():
         if head != b"TES4":
             fail(f"{esm.name}: invalid output (not TES4) - wrong source")
             continue
-        ok(f"{esm.name} -> {out.name} ({out.stat().st_size:,} bytes)")
+        # verificación estructural post-parcheo (records/dialogos/formids)
+        n_rec, n_dial, err = validar_esm(out)
+        if err:
+            fail(f"{esm.name}: validación falló ({err})")
+            continue
+        ok(f"{esm.name} -> {out.name} ({out.stat().st_size:,} bytes, {n_rec:,} records, {n_dial} DIALOG)")
         applied += 1
 
     if applied == 0:
